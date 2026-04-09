@@ -1,6 +1,4 @@
-# NPS-Net: Nested Radially Monotone Polar Occupancy Estimation
-
-**Clinically-Grounded Optic Disc and Cup Segmentation for Glaucoma Screening**
+# NPS-Net: Nested Radially Monotone Polar Occupancy Estimation Clinically-Grounded Optic Disc and Cup Segmentation for Glaucoma Screening
 
 Rimsa Goperma, Rojan Basnet, and Liang Zhao  
 Graduate School of Advanced Integrated Studies in Human Survivability (GSAIS), Kyoto University
