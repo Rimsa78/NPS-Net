@@ -1,11 +1,9 @@
 # NPS-Net: Nested Radially Monotone Polar Occupancy Estimation Clinically-Grounded Optic Disc and Cup Segmentation for Glaucoma Screening
 
-Rimsa Goperma, Rojan Basnet, and Liang Zhao  
-Graduate School of Advanced Integrated Studies in Human Survivability (GSAIS), Kyoto University
+**Authors:** Rimsa Goperma, Rojan Basnet, and Liang Zhao  
+**Affiliation:** Graduate School of Advanced Integrated Studies in Human Survivability (GSAIS), Kyoto University
 
-Valid segmentation of the optic disc (OD) and optic cup (OC) from fundus photographs is essential for glaucoma screening. Unfortunately, existing deep learning methods do not guarantee clinical validness including star-convexity and nested structure of OD and OC, resulting in corruption of diagnostic metrics, especially under cross-dataset domain shift. This paper proposes NPS-Net (Nested Polar Shape Network), the first framework that formulates the OD/OC segmentation as nested radially monotone polar occupancy estimation. This output representation can guarantee the aforementioned clinical validness and achieve high accuracy.
-
-Evaluated across seven public datasets, NPS-Net shows strong zero-shot generalization. On RIM-ONE, it maintains 100% anatomical validity and improves Cup Dice by 12.8% absolute over the best baseline, reducing vCDR MAE by over 56%. On PAPILA, it achieves Disc Dice of 0.9438 and Disc HD95 of 2.78px, an 83% reduction over the best competing method.
+*Valid segmentation of the optic disc (OD) and optic cup (OC) from fundus photographs is essential for glaucoma screening. Unfortunately, existing deep learning methods do not guarantee clinical validness including star-convexity and nested structure of OD and OC, resulting in corruption of diagnostic metrics, especially under cross-dataset domain shift. This paper proposes NPS-Net (Nested Polar Shape Network), the first framework that formulates the OD/OC segmentation as nested radially monotone polar occupancy estimation. This output representation can guarantee the aforementioned clinical validness and achieve high accuracy. Evaluated across seven public datasets, NPS-Net shows strong zero-shot generalization. On RIM-ONE, it maintains 100% anatomical validity and improves Cup Dice by 12.8% absolute over the best baseline, reducing vCDR MAE by over 56%. On PAPILA, it achieves Disc Dice of 0.9438 and Disc HD95 of 2.78px, an 83% reduction over the best competing method.*
 
 ![NPS-Net Architecture](Utils/NSPNet.png)
 
@@ -51,7 +49,7 @@ python evaluation/inference_polar_tta_ablation.py --test
 
 ## Model Weights
 
-Pre-trained weights are available on HuggingFace: https://huggingface.co/Rimsa66/nps-net
+All model weights can be downloaded from HuggingFace: https://huggingface.co/Rimsa66/nps-net
 
 ### NPS-Net (Ours)
 
@@ -63,7 +61,15 @@ Pre-trained weights are available on HuggingFace: https://huggingface.co/Rimsa66
 
 ### Baselines
 
-Vanilla UNet, Attention UNet, ResUNet, PolarUNet, TransUNet, BEAL, DoFE
+| Model | Description |
+|-------|-------------|
+| Vanilla UNet | Standard U-Net baseline |
+| Attention UNet | Attention-gated U-Net |
+| ResUNet | Residual U-Net |
+| PolarUNet | Polar-transformed U-Net |
+| TransUNet | Transformer U-Net |
+| BEAL | Boundary-enhanced Active Learning |
+| DoFE | Domain-aware Feature Extraction |
 
 Download using Python:
 ```python
