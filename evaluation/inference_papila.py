@@ -5,10 +5,10 @@ Papila External-Set Inference — All baselines + NPS-Net.
 Runs each model on the cropped Papila dataset and reports standard segmentation
 and geometry-fidelity metrics for cross-domain generalisation evaluation.
 
-Baseline models (from Comparision/):
+Baseline models:
     vanilla, attunet, resunet, polar_unet, transunet, beal, dofe
 
-NPS-Net (from best/):
+NPS-Net:
     NPSNet — confidence-gated monotone factorised polar network
 
 Usage:
@@ -628,7 +628,7 @@ def save_visualisations(
 
 
 def load_baseline_model(model_name, checkpoint_path=None):
-    """Load a baseline model from Comparision/checkpoints/."""
+    """Load a baseline model."""
     from training.train import build_model
 
     model = build_model(model_name).to(DEVICE)

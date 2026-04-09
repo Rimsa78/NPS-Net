@@ -4,7 +4,7 @@
 Ablation Study Configuration — NPS-Net Component Ablation.
 
 Shared configuration for all ablation variants (B2, B3, B4).
-Identical hyperparameters to the full NPS-Net V3.1 for fair comparison.
+Identical hyperparameters to the full NPS-Net for fair comparison.
 
 The only differences across variants are:
   - Which architectural components are active

@@ -13,7 +13,7 @@ Architecture:
 
 Key properties:
     - Disc head: same SimpleMonotoneHead as B2 (NOT band-anchored)
-    - Cup head: CupGateHead from V3 (restored from ThreeSixty/model.py §4)
+     - Cup head: CupGateHead for nesting constraint
     - Nesting guaranteed: P_c = P_d · Q where Q ∈ [0,1]
     - NO shape prior, NO confidence gating
 
@@ -32,7 +32,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from config import (
-    IMAGE_SIZE, N_THETA, N_RHO, TAU,
+    IMAGE_SIZE,
+    N_THETA,
+    N_RHO,
+    TAU,
     ENCODER_FEATURES,
 )
 
@@ -51,8 +54,9 @@ from model_b2 import (
 
 
 # ==============================================================================
-# §4 — CUP GATE HEAD (from ThreeSixty/model.py, unchanged)
+# CUP GATE HEAD
 # ==============================================================================
+
 
 class CupGateHead(nn.Module):
     """Monotone cup-gate head using cumulative-decrement formulation.
@@ -66,7 +70,7 @@ class CupGateHead(nn.Module):
         super().__init__()
         self.cup_bias_pool = nn.AdaptiveAvgPool2d((1, None))
         self.cup_bias_conv = nn.Conv1d(in_channels, 1, 1)
-        self.cup_dec_conv  = nn.Conv2d(in_channels, 1, 1)
+        self.cup_dec_conv = nn.Conv2d(in_channels, 1, 1)
 
     def forward(self, features):
         """
@@ -88,6 +92,7 @@ class CupGateHead(nn.Module):
 # B3 MODEL — FACTORIZED NESTING
 # ==============================================================================
 
+
 class AblationB3(nn.Module):
     """Ablation B3: + Factorized Nesting (P_c = P_d · Q).
 
@@ -108,8 +113,9 @@ class AblationB3(nn.Module):
         'r_c_m':       (B, N_θ)
     """
 
-    def __init__(self, image_size=IMAGE_SIZE, n_theta=N_THETA, n_rho=N_RHO,
-                 features=None):
+    def __init__(
+        self, image_size=IMAGE_SIZE, n_theta=N_THETA, n_rho=N_RHO, features=None
+    ):
         super().__init__()
         if features is None:
             features = ENCODER_FEATURES
@@ -118,10 +124,10 @@ class AblationB3(nn.Module):
         self.n_theta = n_theta
         self.n_rho = n_rho
 
-        # §1 — Polar sampling grid
+        # Polar sampling grid
         self.polar_grid = PolarSamplingGrid(image_size, n_theta, n_rho)
 
-        # §2 — Shared backbone (same as V3.1)
+        # Shared backbone
         self.polar_unet = PolarEncoderDecoder(in_channels=3, features=features)
 
         # Disc head: simple monotone (same as B2)
@@ -130,10 +136,10 @@ class AblationB3(nn.Module):
         # Cup head: CupGateHead (factorized nesting)
         self.cup_gate = CupGateHead(in_channels=features[0])
 
-        # §7 — Warper
+        # Warper
         self.warper = PolarToCartesianWarper(image_size, n_theta, n_rho)
 
-        # §8 — Geometry extractor
+        # Geometry extractor
         self.geom = GeometryExtractor(n_rho=n_rho)
 
         self._print_param_table()
@@ -143,12 +149,12 @@ class AblationB3(nn.Module):
             return sum(p.numel() for p in m.parameters())
 
         mods = {
-            'Polar Sampling Grid':     self.polar_grid,
-            'Polar Encoder-Decoder':   self.polar_unet,
-            'Disc Monotone Head':      self.disc_head,
-            'Cup Gate Head':           self.cup_gate,
-            'Polar→Cartesian Warper':  self.warper,
-            'Geometry Extractor':      self.geom,
+            "Polar Sampling Grid": self.polar_grid,
+            "Polar Encoder-Decoder": self.polar_unet,
+            "Disc Monotone Head": self.disc_head,
+            "Cup Gate Head": self.cup_gate,
+            "Polar→Cartesian Warper": self.warper,
+            "Geometry Extractor": self.geom,
         }
         tot = sum(count(m) for m in mods.values())
 
@@ -157,40 +163,40 @@ class AblationB3(nn.Module):
         print("-" * 62)
         for name, mod in mods.items():
             c = count(mod)
-            print(f"{name:<38} {c:>10,}  {100*c/max(tot,1):>5.1f}%")
+            print(f"{name:<38} {c:>10,}  {100 * c / max(tot, 1):>5.1f}%")
         print("-" * 62)
         print(f"{'TOTAL LEARNABLE':<38} {tot:>10,}")
         print(f"N_θ={self.n_theta}, N_ρ={self.n_rho}")
         print("-" * 62 + "\n")
 
     def forward(self, x):
-        # §1 — Warp to polar
+        # Warp to polar
         polar_image = self.polar_grid(x)
 
-        # §2 — Shared backbone
+        # Shared backbone
         features = self.polar_unet(polar_image)
 
         # Disc: simple monotone
-        P_d = self.disc_head(features)           # (B, 1, N_ρ, N_θ)
+        P_d = self.disc_head(features)  # (B, 1, N_ρ, N_θ)
 
         # Cup: factorized nesting P_c = P_d · Q
-        L_c = self.cup_gate(features)            # (B, 1, N_ρ, N_θ)
-        Q = torch.sigmoid(L_c)                   # (B, 1, N_ρ, N_θ)
-        P_c = P_d * Q                            # nested: P_c ≤ P_d
+        L_c = self.cup_gate(features)  # (B, 1, N_ρ, N_θ)
+        Q = torch.sigmoid(L_c)  # (B, 1, N_ρ, N_θ)
+        P_c = P_d * Q  # nested: P_c ≤ P_d
 
-        # §7 — Polar → Cartesian
+        # Polar → Cartesian
         Y_d_cart = self.warper(P_d)
         Y_c_cart = self.warper(P_c)
 
-        # §8 — Extract geometry
+        # Extract geometry
         r_d_m = self.geom(P_d)
         r_c_m = self.geom(P_c)
 
         return {
-            'P_d_polar': P_d,
-            'P_c_polar': P_c,
-            'Y_d_cart':  Y_d_cart,
-            'Y_c_cart':  Y_c_cart,
-            'r_d_m':     r_d_m,
-            'r_c_m':     r_c_m,
+            "P_d_polar": P_d,
+            "P_c_polar": P_c,
+            "Y_d_cart": Y_d_cart,
+            "Y_c_cart": Y_c_cart,
+            "r_d_m": r_d_m,
+            "r_c_m": r_c_m,
         }

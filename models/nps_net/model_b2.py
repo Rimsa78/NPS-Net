@@ -31,14 +31,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from config import (
-    IMAGE_SIZE, N_THETA, N_RHO, TAU,
+    IMAGE_SIZE,
+    N_THETA,
+    N_RHO,
+    TAU,
     ENCODER_FEATURES,
 )
 
 
 # ==============================================================================
-# §1 — POLAR SAMPLING GRID (from ThreeSixty/model.py, unchanged)
+# POLAR SAMPLING GRID
 # ==============================================================================
+
 
 class PolarSamplingGrid(nn.Module):
     """Warp a Cartesian image to polar coordinates via differentiable bilinear
@@ -68,38 +72,40 @@ class PolarSamplingGrid(nn.Module):
         grid_y = 2.0 * py / (H - 1) - 1.0
 
         grid = torch.stack([grid_x, grid_y], dim=-1)
-        self.register_buffer('grid', grid.unsqueeze(0))
-        self.register_buffer('rho', rho)
-        self.register_buffer('theta', theta)
-        self.register_buffer('_cx', torch.tensor(cx))
-        self.register_buffer('_cy', torch.tensor(cy))
-        self.register_buffer('_R', torch.tensor(R))
+        self.register_buffer("grid", grid.unsqueeze(0))
+        self.register_buffer("rho", rho)
+        self.register_buffer("theta", theta)
+        self.register_buffer("_cx", torch.tensor(cx))
+        self.register_buffer("_cy", torch.tensor(cy))
+        self.register_buffer("_R", torch.tensor(R))
 
     def forward(self, image):
         B = image.shape[0]
         grid = self.grid.expand(B, -1, -1, -1)
-        return F.grid_sample(image, grid, mode='bilinear',
-                             padding_mode='zeros', align_corners=True)
+        return F.grid_sample(
+            image, grid, mode="bilinear", padding_mode="zeros", align_corners=True
+        )
 
 
 # ==============================================================================
-# §2 — CIRCULAR PADDING CONVOLUTIONS (from ThreeSixty/model.py, unchanged)
+# CIRCULAR PADDING CONVOLUTIONS
 # ==============================================================================
+
 
 class CircularPadConv2d(nn.Module):
     """Conv2d with circular padding along θ (width), zero-padding along ρ."""
 
-    def __init__(self, in_channels, out_channels, kernel_size=3,
-                 stride=1, bias=False):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, bias=False):
         super().__init__()
         self.pad_rho = kernel_size // 2
         self.pad_theta = kernel_size // 2
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size,
-                              stride=stride, padding=0, bias=bias)
+        self.conv = nn.Conv2d(
+            in_channels, out_channels, kernel_size, stride=stride, padding=0, bias=bias
+        )
 
     def forward(self, x):
-        x = F.pad(x, (self.pad_theta, self.pad_theta, 0, 0), mode='circular')
-        x = F.pad(x, (0, 0, self.pad_rho, self.pad_rho), mode='constant', value=0)
+        x = F.pad(x, (self.pad_theta, self.pad_theta, 0, 0), mode="circular")
+        x = F.pad(x, (0, 0, self.pad_rho, self.pad_rho), mode="constant", value=0)
         return self.conv(x)
 
 
@@ -130,14 +136,16 @@ class CircularDoubleConv(nn.Module):
 
 
 # ==============================================================================
-# §2b — POLAR ENCODER-DECODER (from ThreeSixty/model.py, unchanged)
+# POLAR ENCODER-DECODER
 # ==============================================================================
+
 
 class PolarEncoderBlock(nn.Module):
     def __init__(self, in_channels, out_channels, use_groupnorm=False):
         super().__init__()
-        self.double_conv = CircularDoubleConv(in_channels, out_channels,
-                                              use_groupnorm=use_groupnorm)
+        self.double_conv = CircularDoubleConv(
+            in_channels, out_channels, use_groupnorm=use_groupnorm
+        )
         self.pool = nn.MaxPool2d(2, 2)
 
     def forward(self, x):
@@ -150,8 +158,9 @@ class PolarDecoderBlock(nn.Module):
     def __init__(self, in_channels, out_channels, use_groupnorm=False):
         super().__init__()
         self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, 2, stride=2)
-        self.double_conv = CircularDoubleConv(in_channels, out_channels,
-                                              use_groupnorm=use_groupnorm)
+        self.double_conv = CircularDoubleConv(
+            in_channels, out_channels, use_groupnorm=use_groupnorm
+        )
 
     def forward(self, x, skip):
         x = self.up(x)
@@ -177,7 +186,7 @@ class PolarEncoderDecoder(nn.Module):
         self.encoders = nn.ModuleList()
         ch = in_channels
         for i, f in enumerate(features):
-            use_gn = (i < groupnorm_stages)
+            use_gn = i < groupnorm_stages
             self.encoders.append(PolarEncoderBlock(ch, f, use_groupnorm=use_gn))
             ch = f
 
@@ -186,7 +195,7 @@ class PolarEncoderDecoder(nn.Module):
         self.decoders = nn.ModuleList()
         n = len(features)
         for i, f in enumerate(reversed(features)):
-            use_gn = ((n - 1 - i) < groupnorm_stages)
+            use_gn = (n - 1 - i) < groupnorm_stages
             self.decoders.append(PolarDecoderBlock(f * 2, f, use_groupnorm=use_gn))
 
     def forward(self, x):
@@ -202,8 +211,9 @@ class PolarEncoderDecoder(nn.Module):
 
 
 # ==============================================================================
-# §NEW — SIMPLE MONOTONE HEAD (B2-specific)
+# SIMPLE MONOTONE HEAD (B2-specific)
 # ==============================================================================
+
 
 class SimpleMonotoneHead(nn.Module):
     """Independent monotone head via cumulative decrement.
@@ -235,25 +245,26 @@ class SimpleMonotoneHead(nn.Module):
         """
         # Per-angle bias a(θ)
         pooled = self.bias_pool(features).squeeze(2)  # (B, C, N_θ)
-        a = self.bias_conv(pooled)                      # (B, 1, N_θ)
+        a = self.bias_conv(pooled)  # (B, 1, N_θ)
 
         # Per-pixel positive decrement δ(ρ,θ)
-        delta = F.softplus(self.dec_conv(features))     # (B, 1, N_ρ, N_θ)
+        delta = F.softplus(self.dec_conv(features))  # (B, 1, N_ρ, N_θ)
 
         # Cumulative sum along ρ (dim=2)
-        cumsum = torch.cumsum(delta, dim=2)             # (B, 1, N_ρ, N_θ)
+        cumsum = torch.cumsum(delta, dim=2)  # (B, 1, N_ρ, N_θ)
 
         # Monotone logits: a(θ) − Σ δ
-        L = a.unsqueeze(2) - cumsum                     # (B, 1, N_ρ, N_θ)
+        L = a.unsqueeze(2) - cumsum  # (B, 1, N_ρ, N_θ)
 
         # Sigmoid → monotone occupancy
-        P = torch.sigmoid(L)                            # (B, 1, N_ρ, N_θ)
+        P = torch.sigmoid(L)  # (B, 1, N_ρ, N_θ)
         return P
 
 
 # ==============================================================================
-# §7 — POLAR → CARTESIAN WARPER (from ThreeSixty/model.py, unchanged)
+# POLAR → CARTESIAN WARPER
 # ==============================================================================
+
 
 class PolarToCartesianWarper(nn.Module):
     """Warp dense polar masks back to Cartesian space via grid_sample."""
@@ -271,7 +282,7 @@ class PolarToCartesianWarper(nn.Module):
 
         ys = torch.arange(H, dtype=torch.float32)
         xs = torch.arange(W, dtype=torch.float32)
-        grid_y, grid_x = torch.meshgrid(ys, xs, indexing='ij')
+        grid_y, grid_x = torch.meshgrid(ys, xs, indexing="ij")
 
         rho_cart = torch.sqrt((grid_x - cx) ** 2 + (grid_y - cy) ** 2) / R
         theta_cart = torch.atan2(grid_y - cy, grid_x - cx) % (2 * math.pi)
@@ -282,22 +293,24 @@ class PolarToCartesianWarper(nn.Module):
 
         inv_grid = torch.stack([inv_grid_x, inv_grid_y], dim=-1)
 
-        self.register_buffer('inv_grid', inv_grid.unsqueeze(0))
-        self.register_buffer('inside_circle', inside_circle)
+        self.register_buffer("inv_grid", inv_grid.unsqueeze(0))
+        self.register_buffer("inside_circle", inside_circle)
 
     def forward(self, polar_mask):
         B = polar_mask.shape[0]
-        padded = F.pad(polar_mask, (0, 1, 0, 0), mode='circular')
+        padded = F.pad(polar_mask, (0, 1, 0, 0), mode="circular")
         grid = self.inv_grid.expand(B, -1, -1, -1)
-        cart = F.grid_sample(padded, grid, mode='bilinear',
-                             padding_mode='border', align_corners=True)
+        cart = F.grid_sample(
+            padded, grid, mode="bilinear", padding_mode="border", align_corners=True
+        )
         cart = cart * self.inside_circle.unsqueeze(0).unsqueeze(0)
         return cart
 
 
 # ==============================================================================
-# §8 — GEOMETRY EXTRACTOR (from ThreeSixty/model.py, unchanged)
+# GEOMETRY EXTRACTOR
 # ==============================================================================
+
 
 class GeometryExtractor(nn.Module):
     """Extract radial boundary functions from dense monotone masks."""
@@ -305,7 +318,7 @@ class GeometryExtractor(nn.Module):
     def __init__(self, n_rho=N_RHO):
         super().__init__()
         rho = torch.linspace(0, 1, n_rho)
-        self.register_buffer('rho', rho)
+        self.register_buffer("rho", rho)
 
     def forward(self, P):
         if P.dim() == 4:
@@ -329,6 +342,7 @@ class GeometryExtractor(nn.Module):
 # B2 MODEL — INDEPENDENT MONOTONE HEADS
 # ==============================================================================
 
+
 class AblationB2(nn.Module):
     """Ablation B2: + Monotone Occupancy (Independent Heads).
 
@@ -348,8 +362,9 @@ class AblationB2(nn.Module):
         'r_c_m':       (B, N_θ)
     """
 
-    def __init__(self, image_size=IMAGE_SIZE, n_theta=N_THETA, n_rho=N_RHO,
-                 features=None):
+    def __init__(
+        self, image_size=IMAGE_SIZE, n_theta=N_THETA, n_rho=N_RHO, features=None
+    ):
         super().__init__()
         if features is None:
             features = ENCODER_FEATURES
@@ -358,20 +373,20 @@ class AblationB2(nn.Module):
         self.n_theta = n_theta
         self.n_rho = n_rho
 
-        # §1 — Polar sampling grid
+        # Polar sampling grid
         self.polar_grid = PolarSamplingGrid(image_size, n_theta, n_rho)
 
-        # §2 — Shared backbone (same as V3.1)
+        # Shared backbone
         self.polar_unet = PolarEncoderDecoder(in_channels=3, features=features)
 
         # Independent monotone heads
         self.disc_head = SimpleMonotoneHead(in_channels=features[0])
-        self.cup_head  = SimpleMonotoneHead(in_channels=features[0])
+        self.cup_head = SimpleMonotoneHead(in_channels=features[0])
 
-        # §7 — Warper
+        # Warper
         self.warper = PolarToCartesianWarper(image_size, n_theta, n_rho)
 
-        # §8 — Geometry extractor
+        # Geometry extractor
         self.geom = GeometryExtractor(n_rho=n_rho)
 
         self._print_param_table()
@@ -381,12 +396,12 @@ class AblationB2(nn.Module):
             return sum(p.numel() for p in m.parameters())
 
         mods = {
-            'Polar Sampling Grid':     self.polar_grid,
-            'Polar Encoder-Decoder':   self.polar_unet,
-            'Disc Monotone Head':      self.disc_head,
-            'Cup Monotone Head':       self.cup_head,
-            'Polar→Cartesian Warper':  self.warper,
-            'Geometry Extractor':      self.geom,
+            "Polar Sampling Grid": self.polar_grid,
+            "Polar Encoder-Decoder": self.polar_unet,
+            "Disc Monotone Head": self.disc_head,
+            "Cup Monotone Head": self.cup_head,
+            "Polar→Cartesian Warper": self.warper,
+            "Geometry Extractor": self.geom,
         }
         tot = sum(count(m) for m in mods.values())
 
@@ -395,22 +410,22 @@ class AblationB2(nn.Module):
         print("-" * 62)
         for name, mod in mods.items():
             c = count(mod)
-            print(f"{name:<38} {c:>10,}  {100*c/max(tot,1):>5.1f}%")
+            print(f"{name:<38} {c:>10,}  {100 * c / max(tot, 1):>5.1f}%")
         print("-" * 62)
         print(f"{'TOTAL LEARNABLE':<38} {tot:>10,}")
         print(f"N_θ={self.n_theta}, N_ρ={self.n_rho}")
         print("-" * 62 + "\n")
 
     def forward(self, x):
-        # §1 — Warp to polar
+        # Warp to polar
         polar_image = self.polar_grid(x)
 
-        # §2 — Shared backbone
+        # Shared backbone
         features = self.polar_unet(polar_image)
 
         # Independent monotone heads
-        P_d = self.disc_head(features)    # (B, 1, N_ρ, N_θ)
-        P_c = self.cup_head(features)     # (B, 1, N_ρ, N_θ) — NOT nested
+        P_d = self.disc_head(features)  # (B, 1, N_ρ, N_θ)
+        P_c = self.cup_head(features)  # (B, 1, N_ρ, N_θ) — NOT nested
 
         # §7 — Polar → Cartesian
         Y_d_cart = self.warper(P_d)
@@ -421,10 +436,10 @@ class AblationB2(nn.Module):
         r_c_m = self.geom(P_c)
 
         return {
-            'P_d_polar': P_d,
-            'P_c_polar': P_c,
-            'Y_d_cart':  Y_d_cart,
-            'Y_c_cart':  Y_c_cart,
-            'r_d_m':     r_d_m,
-            'r_c_m':     r_c_m,
+            "P_d_polar": P_d,
+            "P_c_polar": P_c,
+            "Y_d_cart": Y_d_cart,
+            "Y_c_cart": Y_c_cart,
+            "r_d_m": r_d_m,
+            "r_c_m": r_c_m,
         }
